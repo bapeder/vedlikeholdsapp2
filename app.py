@@ -7,8 +7,8 @@ import io
 from msal import PublicClientApplication
 
 # === KONFIGURASJON ===
-CLIENT_ID = "DIN_KLIENT_ID"
-TENANT_ID = "DIN_TENANT_ID"
+CLIENT_ID = "a9606e82-6f2d-432a-84f5-f3ce46e65413"
+TENANT_ID = "6be85a4e-06c8-4985-94a3-074807b81b19"
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPES = ["Files.ReadWrite.All", "offline_access", "User.Read"]
 EXCEL_FILENAME = "vedlikeholdsplan_ver22 1.xlsx"
