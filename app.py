@@ -1,21 +1,50 @@
-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
 import requests
 from openpyxl import load_workbook
+import io
+from msal import PublicClientApplication
 
-# Filsti til Excel-filen
-excel_file = "vedlikeholdsplan_ver22.xlsx"
+# === KONFIGURASJON ===
+CLIENT_ID = "DIN_KLIENT_ID"
+TENANT_ID = "DIN_TENANT_ID"
+AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
+SCOPES = ["Files.ReadWrite.All", "offline_access", "User.Read"]
+EXCEL_FILENAME = "vedlikeholdsplan_ver22 1.xlsx"
+EXCEL_SHEET = "Erfaringslogg"
 
-# Koordinater for værdata
-latitude = 70.1112
-longitude = 29.3532
+# === AUTENTISERING ===
+def get_access_token():
+    app = PublicClientApplication(CLIENT_ID, authority=AUTHORITY)
+    accounts = app.get_accounts()
+    if accounts:
+        result = app.acquire_token_silent(SCOPES, account=accounts[0])
+    else:
+        flow = app.initiate_device_flow(scopes=SCOPES)
+        if "user_code" not in flow:
+            raise Exception("Kan ikke starte enhetsflyt")
+        st.info(f"Gå til {flow['verification_uri']} og skriv inn koden: {flow['user_code']}")
+        result = app.acquire_token_by_device_flow(flow)
+    return result["access_token"]
 
-# Hent dagens dato
-today = datetime.today().strftime("%Y-%m-%d")
+# === LAST NED OG LAST OPP EXCEL ===
+def download_excel(access_token):
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{EXCEL_FILENAME}:/content"
+    response = requests.get(url, headers=headers)
+    return io.BytesIO(response.content)
 
-# Hent værdata fra Open-Meteo API
+def upload_excel(access_token, file_bytes):
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    }
+    url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{EXCEL_FILENAME}:/content"
+    response = requests.put(url, headers=headers, data=file_bytes.getvalue())
+    return response.status_code == 200
+
+# === HENT VÆRDATA ===
 def hent_vaerdata(lat, lon):
     try:
         url = (
@@ -28,45 +57,40 @@ def hent_vaerdata(lat, lon):
         temp = data["current"]["temperature_2m"]
         wind = data["current"]["windspeed_10m"]
         weather_code = data["current"]["weathercode"]
-
-        # Enkle beskrivelser basert på weathercode
         weather_map = {
-            0: "Klar himmel",
-            1: "Hovedsakelig klar",
-            2: "Delvis skyet",
-            3: "Overskyet",
-            45: "Tåke",
-            48: "Tåke med rim",
-            51: "Lett yr",
-            53: "Moderat yr",
-            55: "Kraftig yr",
-            61: "Lett regn",
-            63: "Moderat regn",
-            65: "Kraftig regn",
-            71: "Lett snø",
-            73: "Moderat snø",
-            75: "Kraftig snø",
+            0: "Klar himmel", 1: "Hovedsakelig klar", 2: "Delvis skyet", 3: "Overskyet",
+            45: "Tåke", 48: "Tåke med rim", 51: "Lett yr", 53: "Moderat yr", 55: "Kraftig yr",
+            61: "Lett regn", 63: "Moderat regn", 65: "Kraftig regn", 71: "Lett snø",
+            73: "Moderat snø", 75: "Kraftig snø"
         }
         weather = weather_map.get(weather_code, "Ukjent vær")
         return weather, temp, f"{wind} m/s"
     except:
         return "Ukjent", "Ukjent", "Ukjent"
 
-# Hent værdata
+# === APP ===
+st.set_page_config(page_title="Erfaringslogg", layout="centered")
+st.title("📋 Registrer tiltak og erfaring")
+
+today = datetime.today().strftime("%Y-%m-%d")
+latitude = 70.1112
+longitude = 29.3532
 vaer, temperatur, vind = hent_vaerdata(latitude, longitude)
 
-# Last inn tiltak fra vedlikeholdsplanen
-df_plan = pd.read_excel(excel_file, sheet_name="Vedlikeholdsplan", engine="openpyxl")
-tiltak_liste = df_plan["Tiltak"].dropna().unique().tolist()
-
-# Streamlit-app
-st.title("Registrer tiltak og erfaring")
+try:
+    token = get_access_token()
+    excel_io = download_excel(token)
+    df_plan = pd.read_excel(excel_io, sheet_name="Vedlikeholdsplan", engine="openpyxl")
+    tiltak_liste = df_plan["Tiltak"].dropna().unique().tolist()
+except Exception as e:
+    st.error("Feil ved lasting av Excel-fil fra OneDrive.")
+    st.stop()
 
 with st.form("erfaringsskjema"):
-    st.write("📅 Automatisk dato:", today)
-    st.write("🌤️ Automatisk vær:", vaer)
-    st.write("🌡️ Temperatur:", temperatur)
-    st.write("💨 Vind:", vind)
+    st.markdown(f"**📅 Dato:** {today}")
+    st.markdown(f"**🌤️ Vær:** {vaer}")
+    st.markdown(f"**🌡️ Temperatur:** {temperatur}")
+    st.markdown(f"**💨 Vind:** {vind}")
 
     tiltak = st.selectbox("Tiltak", tiltak_liste)
     utført_av = st.text_input("Utført av")
@@ -74,19 +98,18 @@ with st.form("erfaringsskjema"):
     erfaring = st.text_area("Erfaring")
     forbedringer = st.text_area("Forslag til forbedringer")
 
-    send = st.form_submit_button("Lagre")
+    send = st.form_submit_button("📤 Lagre")
 
-    if send:
-        # Last inn arbeidsbok og ark
-        wb = load_workbook(excel_file)
-        sheet = wb["Erfaringslogg"]
+if send:
+    try:
+        excel_io.seek(0)
+        wb = load_workbook(excel_io)
+        sheet = wb[EXCEL_SHEET]
 
-        # Finn første tomme rad
         row = 2
         while sheet.cell(row=row, column=1).value not in [None, ""]:
             row += 1
 
-        # Skriv data til raden
         sheet.cell(row=row, column=1).value = today
         sheet.cell(row=row, column=2).value = vaer
         sheet.cell(row=row, column=3).value = temperatur
@@ -97,7 +120,13 @@ with st.form("erfaringsskjema"):
         sheet.cell(row=row, column=8).value = erfaring
         sheet.cell(row=row, column=9).value = forbedringer
 
-        # Lagre filen
-        wb.save(excel_file)
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
 
-        st.success("Registreringen er lagret i Excel-filen.")
+        if upload_excel(token, output):
+            st.success("✅ Registreringen er lagret i OneDrive.")
+        else:
+            st.error("❌ Kunne ikke laste opp til OneDrive.")
+    except Exception as e:
+        st.error("Feil ved lagring av data.")
