@@ -1,83 +1,44 @@
 import streamlit as st
 import pandas as pd
+from openpyxl import load_workbook
 
-# Load Excel file
-EXCEL_FILE = 'vedlikeholdsplan_ver22.xlsx'
+EXCEL_FILE = "vedlikeholdsplan_ver22.xlsx"
 
-@st.cache_data
-def load_data(sheet_name):
-    return pd.read_excel(EXCEL_FILE, sheet_name=sheet_name, engine='openpyxl')
+def append_to_erfaringslogg(data):
+    df = pd.read_excel(EXCEL_FILE, sheet_name="Erfaringslogg", engine="openpyxl")
+    for i in range(len(df)):
+        if pd.isna(df.loc[i, "Dato"]):
+            for key in data:
+                df.loc[i, key] = data[key]
+            break
+    df.to_excel(EXCEL_FILE, sheet_name="Erfaringslogg", index=False, engine="openpyxl")
 
-def append_row(sheet_name, new_row):
-    df = pd.read_excel(EXCEL_FILE, sheet_name=sheet_name, engine='openpyxl')
-    df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-    with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-        df.to_excel(writer, sheet_name=sheet_name, index=False)
+st.title("Vedlikeholdslogg")
 
-st.title("Vedlikeholdsplan og Erfaringslogg")
+with st.form("logg_form"):
+    st.subheader("Registrer nytt tiltak")
+    dato = st.date_input("Dato")
+    vaer = st.selectbox("Vær", ["Sol", "Skyet", "Regn", "Ukjent"])
+    temp = st.number_input("Temperatur (°C)", min_value=-20, max_value=40, step=1)
+    vind = st.text_input("Vind")
+    tiltak = st.text_input("Tiltak")
+    utfort_av = st.text_input("Utført av")
+    timer = st.number_input("Timer brukt", min_value=0.0, step=0.5)
+    erfaring = st.text_area("Erfaring")
+    forbedringer = st.text_area("Forslag til forbedringer")
+    submitted = st.form_submit_button("Lagre")
 
-tab1, tab2 = st.tabs(["📅 Vedlikeholdsplan", "📝 Erfaringslogg"])
-
-with tab1:
-    st.header("Vedlikeholdsplan")
-    df_plan = load_data("Vedlikeholdsplan")
-    st.dataframe(df_plan)
-
-    with st.expander("➕ Legg til nytt tiltak"):
-        uke = st.text_input("Uke")
-        tiltak = st.text_area("Tiltak")
-        utført = st.selectbox("Utført (Ja/Nei)", ["Ja", "Nei", ""])
-        områder = st.text_input("Berørte områder")
-        dato = st.date_input("Utført dato", format="YYYY-MM-DD")
-        ansvarlig = st.text_input("Ansvarlig")
-        status = st.selectbox("Status", ["Utført", "Delvis", "Ikke utført", ""])
-        prioritet = st.selectbox("Prioritet", ["Høy", "Middels", "Lav", ""])
-        ukeoversikt = st.text_input("Ukeoversikt")
-        kommentar = st.text_input("Kommentarer")
-
-        if st.button("Legg til tiltak"):
-            new_row = {
-                "Uke": uke,
-                "Tiltak": tiltak,
-                "Utført (Ja/Nei)": utført,
-                "Berørte områder": områder,
-                "Utført dato": dato,
-                "Ansvarlig": ansvarlig,
-                "Status": status,
-                "Prioritet": prioritet,
-                "Ukeoversikt": ukeoversikt,
-                "Kommentarer": kommentar
-            }
-            append_row("Vedlikeholdsplan", new_row)
-            st.success("Tiltak lagt til!")
-
-with tab2:
-    st.header("Erfaringslogg")
-    df_logg = load_data("Erfaringslogg")
-    st.dataframe(df_logg)
-
-    with st.expander("➕ Legg til ny erfaring"):
-        dato = st.date_input("Dato", format="YYYY-MM-DD")
-        vær = st.text_input("Vær")
-        temp = st.text_input("Temp")
-        vind = st.text_input("Vind")
-        tiltak = st.text_input("Tiltak")
-        utført_av = st.text_input("Utført av")
-        timer = st.number_input("Timer", min_value=0.0, step=0.5)
-        erfaring = st.text_area("Erfaring")
-        forbedringer = st.text_area("Forbedringer")
-
-        if st.button("Legg til erfaring"):
-            new_row = {
-                "Dato": dato,
-                "Vær": vær,
-                "Temp": temp,
-                "Vind": vind,
-                "Tiltak": tiltak,
-                "Utført av": utført_av,
-                "Timer": timer,
-                "Erfaring": erfaring,
-                "Forbedringer": forbedringer
-            }
-            append_row("Erfaringslogg", new_row)
-            st.success("Erfaring lagt til!")
+    if submitted:
+        new_entry = {
+            "Dato": dato,
+            "Vær": vaer,
+            "Temp": temp,
+            "Vind": vind,
+            "Tiltak": tiltak,
+            "Utført av": utfort_av,
+            "Timer": timer,
+            "Erfaring": erfaring,
+            "Forbedringer": forbedringer
+        }
+        append_to_erfaringslogg(new_entry)
+        st.success("Tiltak lagret i vedlikeholdsplanen.")
