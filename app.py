@@ -31,7 +31,7 @@ def get_access_token():
 # === LAST NED OG LAST OPP EXCEL ===
 def download_excel(access_token):
     headers = {"Authorization": f"Bearer {access_token}"}
-    url = f"https://graph.microsoft.com/v1.0/me/drive/root:/{EXCEL_FILENAME}:/content"
+    url = f"https://arcticstorage-my.sharepoint.com/:x:/g/personal/bap_arcticstoragefacility_no/EWzCd0LyL-pNjwJz6L-MEEMB1mwQwLTnNazWNcS2IvMlHA?e=Fhjr2h:/{EXCEL_FILENAME}:/content"
     response = requests.get(url, headers=headers)
     return io.BytesIO(response.content)
 
