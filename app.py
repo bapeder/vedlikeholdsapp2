@@ -29,11 +29,19 @@ def get_access_token():
     return result["access_token"]
 
 # === LAST NED OG LAST OPP EXCEL ===
+
 def download_excel(access_token):
     headers = {"Authorization": f"Bearer {access_token}"}
     url = f"https://graph.microsoft.com/v1.0/me/drive/root:/Documents/{EXCEL_FILENAME}:/content"
     response = requests.get(url, headers=headers)
-    return io.BytesIO(response.content)
+
+    if response.status_code == 200:
+        return io.BytesIO(response.content)
+    else:
+        st.error(f"❌ Feil ved nedlasting av Excel-fil.")
+        st.code(f"Statuskode: {response.status_code}\nRespons: {response.text}")
+        return None
+
 
 def upload_excel(access_token, file_bytes):
     headers = {
